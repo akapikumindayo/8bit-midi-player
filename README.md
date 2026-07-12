@@ -2,7 +2,7 @@
 8bitでmidiを再生できます。
 
 プレイはこちらから play here
-
+(https://akapikumindayo.github.io/8bit-midi-player/)
 
 音域などからトラックを自動で分けます。
 
