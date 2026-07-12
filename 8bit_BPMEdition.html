@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8bit Retro Chiptune Maker & MIDI Player</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Press Start 2P -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <!-- 
+      ブラウザ環境で完全に1つのグローバル変数「Midi」として自己完結・独立動作する、
+      安全なスタンドアロン版ToneJS/MidiライブラリをCDNから読み込みます。
+      これにより、依存関係に起因する例外的な挙動を完全に防ぎます。
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.js"></script>
+
+    <style>
+        body {
+            font-family: 'Press Start 2P', monospace;
+            background-color: #0d0e15;
+            color: #f3f4f6;
+            image-rendering: pixelated;
+        }
+        /* スクロールバーのレトロスタイル化 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e2f;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #ff4757;
+            border-radius: 4px;
+        }
+        .pixel-border {
+            border: 4px solid #000;
+            box-shadow: 4px 4px 0px #000;
+        }
+        .pixel-btn-red {
+            background-color: #ff4757;
+            border-bottom: 4px solid #ff2e44;
+            transition: all 0.05s ease;
+        }
+        .pixel-btn-red:active {
+            border-bottom-width: 0px;
+            transform: translateY(4px);
+        }
+        .pixel-btn-blue {
+            background-color: #2ed573;
+            border-bottom: 4px solid #26af5f;
+            transition: all 0.05s ease;
+        }
+        .pixel-btn-blue:active {
+            border-bottom-width: 0px;
+            transform: translateY(4px);
+        }
+        .pixel-btn-gray {
+            background-color: #747d8c;
+            border-bottom: 4px solid #57606f;
+            transition: all 0.05s ease;
+        }
+        .pixel-btn-gray:active {
+            border-bottom-width: 0px;
+            transform: translateY(4px);
+        }
+        .pixel-btn-yellow {
+            background-color: #ffa502;
+            border-bottom: 4px solid #eccc68;
+            transition: all 0.05s ease;
+        }
+        .pixel-btn-yellow:active {
+            border-bottom-width: 0px;
+            transform: translateY(4px);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen p-4 md:p-8 justify-between select-none">
+
+    <!-- メインコンテナ: ファミコン/NESをオマージュしたレトロ配色の筐体 -->
+    <div class="max-w-5xl w-full mx-auto bg-[#f1f2f6] text-slate-800 rounded-lg p-6 pixel-border flex flex-col gap-6">
+        
+        <!-- ヘッダーエリア -->
+        <header class="flex flex-col md:flex-row items-center justify-between border-b-4 border-dashed border-slate-400 pb-4 gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-[#ff4757] rounded flex items-center justify-center text-white text-2xl font-bold pixel-border">
+                    8
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl text-[#2f3542] tracking-wider">8BIT-MAKER</h1>
+                    <p class="text-[10px] text-slate-500 mt-1">CHIPTUNE SEQUENCER & MIDI PLAYER</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button id="startButton" class="pixel-btn-red px-6 py-3 text-white text-[10px] rounded pixel-border uppercase">
+                    AUDIO ON
+                </button>
+            </div>
+        </header>
+
+        <!-- MIDI ファイル入力エリア -->
+        <div class="bg-[#2f3542] text-white p-4 rounded-lg border-4 border-black shadow-md flex flex-col gap-4">
+            <h3 class="text-[11px] text-[#ffa502] tracking-widest flex items-center gap-2">
+                📂 MIDI FILE CHIPTUNE PLAYER (ALL-TRACK PLAYBACK)
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- ドラッグ＆ドロップ兼ファイル選択 -->
+                <div id="dropZone" class="border-4 border-dashed border-slate-500 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-700 transition">
+                    <span class="text-[9px] mb-2 text-slate-300">Drag & Drop MIDI here</span>
+                    <span class="text-[8px] text-slate-400">or</span>
+                    <label class="mt-2 pixel-btn-yellow px-3 py-1.5 text-slate-900 text-[9px] rounded pixel-border cursor-pointer">
+                        CHOOSE FILE
+                        <input type="file" id="midiInput" accept=".mid,.midi" class="hidden">
+                    </label>
+                </div>
+
+                <!-- MIDI情報＆再生状況表示 -->
+                <div class="bg-black p-3 rounded border border-slate-700 flex flex-col justify-between text-[8px] leading-relaxed gap-2">
+                    <div>
+                        <p class="text-[#2ed573] font-bold">SONG INFO:</p>
+                        <p class="mt-1">TITLE: <span id="midiTitle" class="text-slate-300">No MIDI Loaded</span></p>
+                        <p>ORIGINAL TEMPO: <span id="midiTempo" class="text-slate-300">- BPM</span></p>
+                        <p>DURATION: <span id="midiDuration" class="text-slate-300">- seconds</span></p>
+                    </div>
+                    
+                    <!-- MIDI専用再生コントロール -->
+                    <div class="flex flex-col gap-2 mt-2 border-t border-slate-800 pt-2">
+                        <!-- BPM テンポコントロールの追加 -->
+                        <div class="flex items-center justify-between gap-2 bg-slate-900 px-2 py-1 rounded">
+                            <span class="text-[#ffa502]">PLAY SPEED (BPM):</span>
+                            <input type="number" id="midiBpmInput" min="30" max="300" value="120" disabled class="w-16 bg-black border border-slate-700 text-white text-[8px] font-mono text-center p-1 rounded focus:outline-none focus:border-[#ffa502] disabled:opacity-40">
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="midiPlayBtn" class="pixel-btn-blue text-white px-3 py-1.5 rounded text-[8px] flex-1 disabled:opacity-50" disabled>MIDI PLAY</button>
+                            <button id="midiStopBtn" class="pixel-btn-gray text-white px-3 py-1.5 rounded text-[8px] flex-1 disabled:opacity-50" disabled>MIDI STOP</button>
+                        </div>
+                        <!-- シークバー -->
+                        <div class="flex items-center gap-2">
+                            <span id="midiCurrentTime" class="text-slate-400 w-10 text-right">0:00</span>
+                            <input type="range" id="midiProgressBar" min="0" max="100" value="0" class="flex-grow accent-[#ffa502]" disabled>
+                            <span id="midiTotalTime" class="text-slate-400 w-10">0:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🎹 新・個別フル88鍵盤ビジュアライザーモニターボード (縦並び＆横スクロール対応スリムレイアウト) -->
+            <div class="flex flex-col gap-3 mt-2">
+                <!-- PULSE 1 -->
+                <div class="bg-slate-900 p-3 rounded-lg border-2 border-black flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                    <div class="w-full md:w-1/4 flex flex-col justify-center">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[#ff4757] font-bold text-[9px]">PULSE 1</span>
+                            <span class="text-[7px] text-slate-500">88 KEYS (A0-C8)</span>
+                        </div>
+                        <span id="midiTrack1" class="text-[7px] text-slate-400 truncate block mt-1 max-w-[200px]">Not Assigned</span>
+                    </div>
+                    <!-- 横幅に余裕を持たせてスクロール可能にするコンテナ -->
+                    <div class="flex-grow relative overflow-x-auto">
+                        <canvas id="canvasPulse1" height="35" class="bg-slate-950 border border-slate-800 rounded h-9 block" style="width: 832px; min-width: 832px;" title="Pulse 1の88鍵盤"></canvas>
+                    </div>
+                </div>
+                <!-- PULSE 2 -->
+                <div class="bg-slate-900 p-3 rounded-lg border-2 border-black flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                    <div class="w-full md:w-1/4 flex flex-col justify-center">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[#eccc68] font-bold text-[9px]">PULSE 2</span>
+                            <span class="text-[7px] text-slate-500">88 KEYS (A0-C8)</span>
+                        </div>
+                        <span id="midiTrack2" class="text-[7px] text-slate-400 truncate block mt-1 max-w-[200px]">Not Assigned</span>
+                    </div>
+                    <div class="flex-grow relative overflow-x-auto">
+                        <canvas id="canvasPulse2" height="35" class="bg-slate-950 border border-slate-800 rounded h-9 block" style="width: 832px; min-width: 832px;" title="Pulse 2の88鍵盤"></canvas>
+                    </div>
+                </div>
+                <!-- TRIANGLE -->
+                <div class="bg-slate-900 p-3 rounded-lg border-2 border-black flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                    <div class="w-full md:w-1/4 flex flex-col justify-center">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[#1e90ff] font-bold text-[9px]">TRIANGLE</span>
+                            <span class="text-[7px] text-slate-500">88 KEYS (A0-C8)</span>
+                        </div>
+                        <span id="midiTrack3" class="text-[7px] text-slate-400 truncate block mt-1 max-w-[200px]">Not Assigned</span>
+                    </div>
+                    <div class="flex-grow relative overflow-x-auto">
+                        <canvas id="canvasTriangle" height="35" class="bg-slate-950 border border-slate-800 rounded h-9 block" style="width: 832px; min-width: 832px;" title="Triangleの88鍵盤"></canvas>
+                    </div>
+                </div>
+                <!-- NOISE -->
+                <div class="bg-slate-900 p-3 rounded-lg border-2 border-black flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                    <div class="w-full md:w-1/4 flex flex-col justify-center">
+                        <div class="flex justify-between items-center">
+                            <span class="text-[#2ed573] font-bold text-[9px]">NOISE</span>
+                            <span class="text-[7px] text-slate-500">88 KEYS (DRUM MAP)</span>
+                        </div>
+                        <span id="midiTrack4" class="text-[7px] text-slate-400 truncate block mt-1 max-w-[200px]">Not Assigned</span>
+                    </div>
+                    <div class="flex-grow relative overflow-x-auto">
+                        <canvas id="canvasNoise" height="35" class="bg-slate-950 border border-slate-800 rounded h-9 block" style="width: 832px; min-width: 832px;" title="Noiseの88鍵盤"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- コントロールパネル -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#dfe4ea] p-4 rounded border-2 border-slate-300">
+            <!-- 再生制御 -->
+            <div class="flex flex-col gap-2">
+                <span class="text-[10px] text-slate-600 font-bold">STEP SEQUENCER CONTROL</span>
+                <div class="flex gap-2">
+                    <button id="playBtn" class="pixel-btn-blue flex-1 py-2 text-white text-xs rounded pixel-border">PLAY</button>
+                    <button id="stopBtn" class="pixel-btn-gray flex-1 py-2 text-white text-xs rounded pixel-border">STOP</button>
+                    <button id="clearBtn" class="pixel-btn-gray py-2 px-3 text-white text-xs rounded pixel-border" title="すべてクリア">CLR</button>
+                </div>
+            </div>
+
+            <!-- テンポ (BPM) 調整 -->
+            <div class="flex flex-col gap-2 justify-center">
+                <div class="flex justify-between text-[10px] text-slate-600 font-bold">
+                    <span>TEMPO (BPM)</span>
+                    <span id="bpmVal">120</span>
+                </div>
+                <input type="range" id="bpmSlider" min="60" max="240" value="120" class="w-full accent-[#ff4757] cursor-pointer">
+            </div>
+
+            <!-- プリセット選択 & インスト追加機能 -->
+            <div class="flex flex-col gap-2">
+                <span class="text-[10px] text-slate-600 font-bold">SONG PRESET</span>
+                <div class="flex gap-2">
+                    <button id="preset1" class="pixel-btn-gray flex-1 py-2 text-white text-[9px] rounded pixel-border">HERO'S THEME</button>
+                    <button id="preset2" class="pixel-btn-gray flex-1 py-2 text-white text-[9px] rounded pixel-border">DUNGEON</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- チャンネルタブ切替 -->
+        <div class="flex overflow-x-auto gap-2 border-b-4 border-slate-300 pb-2">
+            <button data-channel="pulse1" class="tab-btn px-4 py-2 bg-[#ff4757] text-white text-[10px] rounded-t border-t-4 border-x-4 border-black font-bold">
+                PULSE 1
+            </button>
+            <button data-channel="pulse2" class="tab-btn px-4 py-2 bg-slate-300 text-slate-600 text-[10px] rounded-t border-t-4 border-x-4 border-slate-400 font-bold">
+                PULSE 2
+            </button>
+            <button data-channel="triangle" class="tab-btn px-4 py-2 bg-slate-300 text-slate-600 text-[10px] rounded-t border-t-4 border-x-4 border-slate-400 font-bold">
+                TRIANGLE
+            </button>
+            <button data-channel="noise" class="tab-btn px-4 py-2 bg-slate-300 text-slate-600 text-[10px] rounded-t border-t-4 border-x-4 border-slate-400 font-bold">
+                NOISE DRUM
+            </button>
+        </div>
+
+        <!-- チャンネル設定パネル -->
+        <div id="channelConfig" class="bg-[#dfe4ea] p-3 rounded flex flex-wrap gap-4 items-center justify-between text-[10px] text-slate-700">
+            <!-- 矩形波専用: Duty比 -->
+            <div id="dutyControl" class="flex items-center gap-2">
+                <span>WAVE FORM (DUTY):</span>
+                <select id="dutySelect" class="bg-white border-2 border-slate-400 p-1 text-xs rounded">
+                    <option value="0.125">12.5% (鋭いハープ風)</option>
+                    <option value="0.25">25.0% (ポータブルゲーム機風)</option>
+                    <option value="0.50" selected>50.0% (標準的な矩形波)</option>
+                </select>
+            </div>
+            <!-- ノイズ専用: サウンド説明 -->
+            <div id="noiseInfo" class="hidden text-slate-600 italic">
+                ※ノイズ音源は疑似乱数ジェネレータを用いたドラムシミュレートです。
+            </div>
+            <!-- ボリュームとエンベロープ -->
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1">
+                    <span>VOL:</span>
+                    <input type="range" id="volSlider" min="0" max="100" value="70" class="w-16 accent-[#ff4757]">
+                </div>
+                <div class="flex items-center gap-1">
+                    <span>DECAY:</span>
+                    <input type="range" id="decaySlider" min="5" max="100" value="30" class="w-16 accent-[#ff4757]">
+                </div>
+            </div>
+        </div>
+
+        <!-- メイングリッド (シーケンサー本体) -->
+        <div class="relative bg-black p-4 rounded-lg overflow-x-auto pixel-border">
+            <!-- ステップ番号インジケーター -->
+            <div class="grid grid-cols-17 gap-1 mb-2 min-w-[640px]">
+                <div class="w-20 text-[9px] text-slate-400 flex items-center justify-end pr-2 font-bold">STEP:</div>
+                <div class="col-span-16 grid grid-cols-16 gap-1" id="stepIndicatorContainer">
+                    <!-- JavaScriptで動的生成 -->
+                </div>
+            </div>
+
+            <!-- ノート/グリッドエリア -->
+            <div id="sequencerGrid" class="flex flex-col gap-1 min-w-[640px]">
+                <!-- JavaScriptでチャンネルに応じてグリッドを動的書き換え -->
+            </div>
+        </div>
+
+        <!-- リアルタイム鍵盤演奏エリア -->
+        <div class="bg-[#2f3542] p-4 rounded-lg pixel-border">
+            <h3 class="text-white text-[10px] mb-3 tracking-widest text-center">🎤 REALTIME KEYBOARD PLAY</h3>
+            <div class="flex justify-center gap-1 overflow-x-auto pb-2" id="pianoKeyboard">
+                <!-- 鍵盤をJSで動的に配置 -->
+            </div>
+        </div>
+
+        <!-- フッター/デバッグメッセージ -->
+        <div id="statusMessage" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2 text-[8px] rounded">
+            ⚠️ 音を鳴らすには、右上の [AUDIO ON] ボタンを押してWebオーディオを有効化してください。
+        </div>
+
+    </div>
+
+    <footer class="text-center text-[8px] text-slate-500 mt-8 mb-4">
+        © 2026 8BIT-MAKER | DESIGNED BY CODING MASTER
+    </footer>
+
+    <!-- Web Audio API & シーケンサー & MIDI再生ロジック -->
+    <script>
+        // --- 状態定義 ---
+        let audioCtx = null;
+        let mainGainNode = null; // 全体ボリューム用
+
+        let isPlaying = false;
+        let currentStep = 0;
+        let bpm = 120;
+        let timerId = null;
+        let activeChannel = 'pulse1'; // pulse1, pulse2, triangle, noise
+
+        // MIDI再生システム用の変数
+        let midiData = null;
+        let isMidiPlaying = false;
+        let midiStartTime = 0;
+        let midiPausedTime = 0;
+        let midiPlayTimeoutIds = [];
+        let midiProgressInterval = null;
+
+        // ★追加：BPM調整のためのテンポ追跡変数
+        let originalClassifiedGroups = null; // 基準となる無加工のMIDIトラックグループ
+        let baseMidiBpm = 120;               // MIDIからパースされた最初のBPM値
+        let currentMidiBpm = 120;            // ユーザーが調整したリアルタイムBPM
+        let originalMidiDuration = 0;        // 元の曲の秒数
+        let currentMidiDuration = 0;         // スケーリング後の曲の秒数
+
+        // パート別のビジュアライザー発光状態管理
+        const channelsVisualizerState = {
+            pulse1: {},    // midiNote -> { active, intensity, duration, startTime, triggerTime }
+            pulse2: {},
+            triangle: {},
+            noise: {}      // ドラムもピッチ対応の88鍵盤表示に対応
+        };
+
+        // 16ステップ × 12音(またはドラム4種)のシーケンサーデータ
+        const channelsData = {
+            pulse1: {
+                duty: 0.50,
+                volume: 0.7,
+                decay: 0.3,
+                grid: Array(12).fill(null).map(() => Array(16).fill(false))
+            },
+            pulse2: {
+                duty: 0.25,
+                volume: 0.7,
+                decay: 0.3,
+                grid: Array(12).fill(null).map(() => Array(16).fill(false))
+            },
+            triangle: {
+                volume: 0.8,
+                decay: 0.5,
+                grid: Array(12).fill(null).map(() => Array(16).fill(false))
+            },
+            noise: {
+                volume: 0.6,
+                decay: 0.15,
+                grid: Array(4).fill(null).map(() => Array(16).fill(false))
+            }
+        };
+
+        // 音階定義 (C4からB5まで)
+        const noteNames = ['B5', 'A#5', 'A5', 'G#5', 'G5', 'F#5', 'F5', 'E5', 'D#5', 'D5', 'C#5', 'C5'];
+        const noteFrequencies = {
+            'B5': 987.77, 'A#5': 932.33, 'A5': 880.00, 'G#5': 830.61, 'G5': 783.99, 'F#5': 739.99,
+            'F5': 698.46, 'E5': 659.25, 'D#5': 622.25, 'D5': 587.33, 'C#5': 554.37, 'C5': 523.25
+        };
+
+        // 三角波用低音スケール (C3からB4)
+        const bassNoteNames = ['B4', 'A#4', 'A4', 'G#4', 'G4', 'F#4', 'F4', 'E4', 'D#4', 'D4', 'C#4', 'C4'];
+        const bassFrequencies = {
+            'B4': 493.88, 'A#4': 466.16, 'A4': 440.00, 'G#4': 415.30, 'G4': 392.00, 'F#4': 369.99,
+            'F4': 349.23, 'E4': 329.63, 'D#4': 311.13, 'D4': 293.66, 'C#4': 277.18, 'C4': 261.63
+        };
+
+        // ノイズチャンネル（ドラム音）の名前
+        const drumNames = ['TOM', 'HAT', 'SNARE', 'KICK'];
+
+        // --- プリセットデータ ---
+        const presetSongs = {
+            hero: {
+                bpm: 135,
+                pulse1: [
+                    [11, 0], [11, 1], [11, 2], [6, 3], [6, 4], [4, 5], [4, 6], [1, 7],
+                    [1, 8], [1, 9], [3, 10], [4, 11], [6, 12], [6, 13], [11, 14]
+                ],
+                pulse2: [
+                    [7, 0], [7, 2], [2, 3], [2, 5], [11, 6], [11, 8], [9, 10], [7, 12]
+                ],
+                triangle: [
+                    [11, 0], [11, 2], [6, 4], [6, 6], [4, 8], [4, 10], [1, 12], [1, 14]
+                ],
+                noise: [
+                    [3, 0], [1, 4], [2, 6], [3, 8], [1, 12], [2, 14]
+                ]
+            },
+            dungeon: {
+                bpm: 100,
+                pulse1: [
+                    [11, 0], [10, 2], [8, 4], [7, 6], [11, 8], [10, 10], [8, 12], [7, 14]
+                ],
+                pulse2: [
+                    [6, 1], [5, 3], [3, 5], [2, 7], [6, 9], [5, 11], [3, 13], [2, 15]
+                ],
+                triangle: [
+                    [11, 0], [11, 3], [10, 4], [10, 7], [8, 8], [8, 11], [7, 12], [7, 15]
+                ],
+                noise: [
+                    [3, 0], [2, 2], [3, 4], [2, 6], [3, 8], [2, 10], [3, 12], [1, 14]
+                ]
+            }
+        };
+
+        // --- Web Audio 関連初期化 ---
+        function initAudio() {
+            if (audioCtx) return;
+            
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContextClass();
+            
+            // 全体ボリューム用のゲイン
+            mainGainNode = audioCtx.createGain();
+            mainGainNode.gain.value = 1.0;
+            mainGainNode.connect(audioCtx.destination);
+            
+            updateStatus("🎮 8bit音源 & パート別独立点滅ビジュアライザー起動！", "green");
+            document.getElementById("startButton").classList.replace("pixel-btn-red", "pixel-btn-blue");
+            document.getElementById("startButton").innerText = "CONNECTED";
+            
+            // パートごとのミニビジュアライザー描画ループを開始
+            requestAnimationFrame(drawAllVisualizers);
+        }
+
+        // 状態メッセージ表示
+        function updateStatus(msg, color = "yellow") {
+            const status = document.getElementById("statusMessage");
+            status.innerText = msg;
+            status.className = `p-2 text-[8px] rounded border-l-4 font-bold `;
+            if (color === "green") {
+                status.classList.add("bg-green-100", "border-green-500", "text-green-700");
+            } else if (color === "red") {
+                status.classList.add("bg-red-100", "border-red-500", "text-red-700");
+            } else {
+                status.classList.add("bg-yellow-100", "border-yellow-500", "text-yellow-700");
+            }
+        }
+
+        // --- 8bit カスタム波形生成 ---
+        function createDutyCycleWave(duty, frequency) {
+            let harmonics = 24; 
+            if (frequency > 1500) harmonics = 6;
+            else if (frequency > 800) harmonics = 12;
+
+            const real = new Float32Array(harmonics);
+            const imag = new Float32Array(harmonics);
+            
+            real[0] = 0;
+            imag[0] = 0;
+            
+            for (let n = 1; n < harmonics; n++) {
+                imag[n] = (2.0 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
+                real[n] = 0;
+            }
+            
+            return audioCtx.createPeriodicWave(real, imag, { disableNormalization: false });
+        }
+
+        // ノイズバッファ
+        let cachedNoiseBuffer = null;
+        function getNoiseBuffer() {
+            if (cachedNoiseBuffer) return cachedNoiseBuffer;
+            const bufferSize = audioCtx.sampleRate * 2;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            cachedNoiseBuffer = buffer;
+            return cachedNoiseBuffer;
+        }
+
+        // 鳴らしたノートを対応するチャンネルの個別ビジュアライザーへ登録する
+        function triggerVisualizerNote(channelKey, noteIndex, duration) {
+            const now = Date.now();
+            
+            const channelState = channelsVisualizerState[channelKey];
+            if (!channelState) return;
+
+            // 新規にトリガーされた瞬間時刻（triggerTime）を強制的に更新
+            channelState[noteIndex] = {
+                active: true,
+                intensity: 1.0,
+                duration: duration,
+                startTime: now,
+                triggerTime: now // アタックのフラッシュ発光を指示する時間
+            };
+        }
+
+        // --- 発音エンジン（チャンネル別ビジュアライザ・点滅連動） ---
+        function playNote(channelKey, frequency, duration, decay, scheduledTime = 0) {
+            if (!audioCtx) return;
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const config = channelsData[channelKey];
+            const now = audioCtx.currentTime + scheduledTime;
+            
+            // 高音域の補正
+            let compensationFactor = 1.0;
+            if (frequency > 1000) {
+                compensationFactor = 1.0 + Math.min(1.2, (frequency - 1000) / 1500);
+            }
+            const trackVolume = config.volume * compensationFactor;
+
+            const safeAttack = Math.min(0.004, duration * 0.08);
+            const safeDecay = Math.min(decay, duration * 0.8);
+
+            // 音階に応じたMIDIノート番号を取得してビジュアライザーに投げる
+            if (channelKey !== 'noise') {
+                const midiNote = Math.round(12 * Math.log2(frequency / 440) + 69);
+                if (scheduledTime <= 0) {
+                    triggerVisualizerNote(channelKey, midiNote, duration);
+                } else {
+                    setTimeout(() => {
+                        triggerVisualizerNote(channelKey, midiNote, duration);
+                    }, scheduledTime * 1000);
+                }
+            } else {
+                // ドラムノイズは 0〜3 で判定し、鍵盤上の対応する位置にトリガーする
+                const drumType = frequency; // 0: TOM, 1: HAT, 2: SNARE, 3: KICK
+                const drumMidiMapping = { 3: 24, 2: 28, 1: 31, 0: 34 }; // Kick, Snare, Hat, Tom を特定位置へ
+                const midiNote = drumMidiMapping[drumType] || 24;
+                if (scheduledTime <= 0) {
+                    triggerVisualizerNote(channelKey, midiNote, duration);
+                } else {
+                    setTimeout(() => {
+                        triggerVisualizerNote(channelKey, midiNote, duration);
+                    }, scheduledTime * 1000);
+                }
+            }
+
+            if (channelKey === 'pulse1' || channelKey === 'pulse2') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                const wave = createDutyCycleWave(config.duty, frequency);
+                osc.setPeriodicWave(wave);
+                osc.frequency.setValueAtTime(frequency, now);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(trackVolume * 0.25, now + safeAttack);
+                
+                if (duration > safeDecay) {
+                    gain.gain.setValueAtTime(trackVolume * 0.25, now + safeAttack + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(trackVolume * 0.15, now + safeDecay);
+                    gain.gain.setValueAtTime(trackVolume * 0.15, now + duration - 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+                } else {
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+                }
+                
+                osc.connect(gain);
+                gain.connect(mainGainNode);
+                
+                osc.start(now);
+                osc.stop(now + duration + 0.05);
+
+            } else if (channelKey === 'triangle') {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(frequency, now);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(trackVolume * 0.35, now + 0.01);
+                
+                if (duration > safeDecay) {
+                    gain.gain.setValueAtTime(trackVolume * 0.35, now + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(trackVolume * 0.25, now + safeDecay);
+                    gain.gain.setValueAtTime(trackVolume * 0.25, now + duration - 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+                } else {
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+                }
+                
+                osc.connect(gain);
+                gain.connect(mainGainNode);
+                
+                osc.start(now);
+                osc.stop(now + duration + 0.05);
+
+            } else if (channelKey === 'noise') {
+                // ノイズドラムシミュレート
+                const drumType = frequency; // 0: TOM, 1: HAT, 2: SNARE, 3: KICK
+                
+                const bufferSource = audioCtx.createBufferSource();
+                bufferSource.buffer = getNoiseBuffer();
+                
+                const filter = audioCtx.createBiquadFilter();
+                const gain = audioCtx.createGain();
+                
+                bufferSource.connect(filter);
+                filter.connect(gain);
+                gain.connect(mainGainNode);
+
+                if (drumType === 3) { // KICK
+                    const kickOsc = audioCtx.createOscillator();
+                    const kickGain = audioCtx.createGain();
+                    kickOsc.type = 'triangle';
+                    kickOsc.frequency.setValueAtTime(150, now);
+                    kickOsc.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+                    
+                    kickGain.gain.setValueAtTime(trackVolume * 0.6, now);
+                    kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                    
+                    kickOsc.connect(kickGain);
+                    kickGain.connect(mainGainNode);
+                    kickOsc.start(now);
+                    kickOsc.stop(now + 0.18);
+                    
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(300, now);
+                    gain.gain.setValueAtTime(trackVolume * 0.2, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+                    bufferSource.start(now);
+                    bufferSource.stop(now + 0.05);
+
+                } else if (drumType === 2) { // SNARE
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(1000, now);
+                    filter.Q.setValueAtTime(1.5, now);
+                    
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(trackVolume * 0.5, now + 0.005);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + (duration < decay ? duration : decay));
+                    
+                    bufferSource.start(now);
+                    bufferSource.stop(now + duration + 0.05);
+
+                } else if (drumType === 1) { // HI-HAT
+                    filter.type = 'highpass';
+                    filter.frequency.setValueAtTime(8000, now);
+                    
+                    gain.gain.setValueAtTime(trackVolume * 0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    
+                    bufferSource.start(now);
+                    bufferSource.stop(now + 0.08);
+
+                } else if (drumType === 0) { // TOM
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(600, now);
+                    filter.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+                    
+                    gain.gain.setValueAtTime(trackVolume * 0.5, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                    
+                    bufferSource.start(now);
+                    bufferSource.stop(now + 0.2);
+                }
+            }
+        }
+
+        // --- 🎨 4つの独立ミニビジュアライザー描画ループシステム ---
+        function drawAllVisualizers() {
+            requestAnimationFrame(drawAllVisualizers);
+            if (!audioCtx) return;
+
+            const now = Date.now();
+            const decayRate = 0.04; // 残響フェードアウト速度
+
+            // --- 減衰処理 (全チャンネル共通) ---
+            Object.keys(channelsVisualizerState).forEach(chanKey => {
+                const states = channelsVisualizerState[chanKey];
+                Object.keys(states).forEach(key => {
+                    const state = states[key];
+                    if (state && state.active) {
+                        const elapsed = (now - state.startTime) / 1000;
+                        if (elapsed > state.duration) {
+                            state.intensity -= decayRate;
+                            if (state.intensity <= 0) {
+                                state.intensity = 0;
+                                state.active = false;
+                            }
+                        }
+                    }
+                });
+            });
+
+            // 1. PULSE 1 (フル88鍵盤: A0(21) 〜 C8(108)) の描画
+            drawMiniKeyboard('canvasPulse1', 'pulse1', 21, 108, '#ff4757');
+
+            // 2. PULSE 2 (フル88鍵盤: A0(21) 〜 C8(108)) の描画
+            drawMiniKeyboard('canvasPulse2', 'pulse2', 21, 108, '#eccc68');
+
+            // 3. TRIANGLE (フル88鍵盤: A0(21) 〜 C8(108)) の描画
+            drawMiniKeyboard('canvasTriangle', 'triangle', 21, 108, '#1e90ff');
+
+            // 4. NOISE (フル88鍵盤ドラムマップ) の描画
+            drawMiniKeyboard('canvasNoise', 'noise', 21, 108, '#2ed573');
+        }
+
+        // ミニ鍵盤の描画
+        function drawMiniKeyboard(canvasId, channelKey, startMidi, endMidi, colorHex) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+
+            const targetWidth = 832;
+            const targetHeight = 35; // 高さはスマートに35pxに固定
+
+            if (canvas.width !== targetWidth * 2 || canvas.height !== targetHeight * 2) {
+                canvas.width = targetWidth * 2;
+                canvas.height = targetHeight * 2;
+                ctx.scale(2, 2);
+            }
+
+            const w = targetWidth;
+            const h = targetHeight;
+
+            // 背景クリア
+            ctx.fillStyle = "#0a0b10";
+            ctx.fillRect(0, 0, w, h);
+
+            // 音高配列を作成
+            const isBlackKeyPattern = [false, true, false, true, false, false, true, false, true, false, true, false];
+            const keys = [];
+            let whiteKeyIndex = 0;
+
+            for (let midi = startMidi; midi <= endMidi; midi++) {
+                const noteInOctave = midi % 12;
+                const isBlack = isBlackKeyPattern[noteInOctave];
+                keys.push({
+                    midi: midi,
+                    isBlack: isBlack,
+                    whiteIndex: isBlack ? -1 : whiteKeyIndex
+                });
+                if (!isBlack) whiteKeyIndex++;
+            }
+
+            const totalWhiteKeys = keys.filter(k => !k.isBlack).length; // 52
+            const whiteKeyWidth = w / totalWhiteKeys; // 832 / 52 = 16px
+            const blackKeyWidth = whiteKeyWidth * 0.58;
+            const blackKeyHeight = h * 0.58;
+
+            const now = Date.now();
+            const flashDuration = 55; // 白くパッと弾ける点滅ミリ秒数
+
+            // 白鍵描画
+            keys.forEach(k => {
+                if (k.isBlack) return;
+                const x = k.whiteIndex * whiteKeyWidth;
+                const state = channelsVisualizerState[channelKey][k.midi];
+
+                if (state && state.active && state.intensity > 0) {
+                    const timeSinceTrigger = now - state.triggerTime;
+                    if (timeSinceTrigger < flashDuration) {
+                        ctx.fillStyle = "#ffffff"; // アタックの一瞬だけフラッシュ発光
+                    } else {
+                        ctx.fillStyle = colorHex;
+                    }
+                    ctx.fillRect(x, 0, whiteKeyWidth - 1, h);
+
+                    // 綺麗なグラデーション反射
+                    const grad = ctx.createLinearGradient(x, 0, x, h);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.4)');
+                    grad.addColorStop(1, `rgba(0,0,0,${0.4 * (1 - state.intensity)})`);
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(x, 0, whiteKeyWidth - 1, h);
+                } else {
+                    ctx.fillStyle = "#1e2230"; // 未打鍵状態のレトロダーク白鍵
+                    ctx.fillRect(x, 0, whiteKeyWidth - 1, h);
+                    ctx.fillStyle = "#161924";
+                    ctx.fillRect(x, h - 2, whiteKeyWidth - 1, 2);
+                }
+            });
+
+            // 黒鍵描画
+            keys.forEach(k => {
+                if (!k.isBlack) return;
+                const prevWhiteKey = keys.slice(0, keys.indexOf(k)).filter(key => !key.isBlack).length;
+                const x = (prevWhiteKey * whiteKeyWidth) - (blackKeyWidth / 2);
+                const state = channelsVisualizerState[channelKey][k.midi];
+
+                if (state && state.active && state.intensity > 0) {
+                    const timeSinceTrigger = now - state.triggerTime;
+                    if (timeSinceTrigger < flashDuration) {
+                        ctx.fillStyle = "#ffffff"; // アタックの一瞬だけ点滅
+                    } else {
+                        ctx.fillStyle = colorHex;
+                    }
+                    ctx.fillRect(x, 0, blackKeyWidth, blackKeyHeight);
+
+                    const grad = ctx.createLinearGradient(x, 0, x, blackKeyHeight);
+                    grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(x, 0, blackKeyWidth, blackKeyHeight);
+                } else {
+                    ctx.fillStyle = "#0d0e15"; // 未打鍵状態の黒鍵
+                    ctx.fillRect(x, 0, blackKeyWidth, blackKeyHeight);
+                }
+            });
+        }
+
+        // --- MIDI解析 & マッピングロジック ---
+        async function handleMidiFile(file) {
+            initAudio();
+            updateStatus("⏳ MIDIデータを読み込んで解析中...");
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const MidiConstructor = window.Midi || (typeof Midi !== 'undefined' ? Midi : null);
+                    if (!MidiConstructor) {
+                        throw new Error("MIDIパーサーライブラリの初期化に失敗しました。");
+                    }
+
+                    const parsedMidi = new MidiConstructor(e.target.result);
+                    midiData = parsedMidi;
+
+                    // UIの楽曲情報を更新
+                    document.getElementById("midiTitle").innerText = parsedMidi.name || file.name.replace(/\.[^/.]+$/, "");
+                    
+                    // ★追加：BPMの初期化
+                    baseMidiBpm = Math.round(parsedMidi.header.tempos[0]?.bpm || 120);
+                    currentMidiBpm = baseMidiBpm;
+                    
+                    const midiBpmInput = document.getElementById("midiBpmInput");
+                    midiBpmInput.value = baseMidiBpm;
+                    midiBpmInput.disabled = false;
+
+                    document.getElementById("midiTempo").innerText = `${baseMidiBpm} BPM`;
+                    
+                    // ★追加：時間情報の初期化
+                    originalMidiDuration = parsedMidi.duration;
+                    currentMidiDuration = originalMidiDuration;
+                    document.getElementById("midiDuration").innerText = `${Math.round(currentMidiDuration)}秒`;
+                    document.getElementById("midiTotalTime").innerText = formatTime(currentMidiDuration);
+
+                    // 全トラックの自動グループ統合割り当て
+                    autoAssignMidiTracks(parsedMidi.tracks);
+
+                    // 再生ボタンの有効化
+                    document.getElementById("midiPlayBtn").disabled = false;
+                    document.getElementById("midiStopBtn").disabled = false;
+                    document.getElementById("midiProgressBar").disabled = false;
+                    document.getElementById("midiProgressBar").max = Math.round(currentMidiDuration);
+
+                    updateStatus("✨ MIDIファイルの全トラックマッピングが完了しました！", "green");
+                } catch (err) {
+                    console.error(err);
+                    updateStatus("❌ MIDIファイルのパースに失敗しました。", "red");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // すべてのMIDIトラックをコピー（イミュータブル処理用ディープコピー関数）
+        function cloneTracks(tracksArray) {
+            if (!tracksArray) return [];
+            return tracksArray.map(track => {
+                return {
+                    name: track.name,
+                    instrument: { ...track.instrument },
+                    channel: track.channel,
+                    notes: track.notes.map(note => ({
+                        time: note.time,
+                        midi: note.midi,
+                        duration: note.duration,
+                        velocity: note.velocity
+                    }))
+                };
+            });
+        }
+
+        // すべてのMIDIトラックを4つの8bit音色系統に全自動で仕分け・統合する
+        function autoAssignMidiTracks(tracks) {
+            document.getElementById("midiTrack1").innerText = "None";
+            document.getElementById("midiTrack2").innerText = "None";
+            document.getElementById("midiTrack3").innerText = "None";
+            document.getElementById("midiTrack4").innerText = "None";
+
+            // 分類用グループ配列
+            midiData.classifiedGroups = {
+                pulse1: [],  // 主旋律
+                pulse2: [],  // 伴奏・和音
+                triangle: [],// ベース
+                noise: []    // リズム
+            };
+
+            let pulse1Names = [];
+            let pulse2Names = [];
+            let triangleNames = [];
+            let noiseNames = [];
+
+            // すべてのトラックを巡回して割り当てる
+            tracks.forEach((track, index) => {
+                if (track.notes.length === 0) return;
+
+                const trackName = track.name || "";
+                const instrumentName = track.instrument.name || "";
+                
+                const isDrumKeyword = /drum|perc|hit|brush|cymbal|snare|kick|tom|hihat|ride/i.test(trackName) || 
+                                     /drum|perc/i.test(instrumentName);
+                
+                const isDrum = track.instrument.percussion || track.channel === 9 || isDrumKeyword;
+
+                if (isDrum) {
+                    midiData.classifiedGroups.noise.push(track);
+                    noiseNames.push(trackName || `Drums #${index + 1}`);
+                } else {
+                    // 周波数による自動仕分け（ベースかそれ以外か）
+                    let sum = track.notes.reduce((acc, note) => acc + note.midi, 0);
+                    let avgMidi = sum / track.notes.length;
+
+                    if (avgMidi < 50 || /bass|cello|tuba/i.test(trackName) || /bass/i.test(instrumentName)) {
+                        midiData.classifiedGroups.triangle.push(track);
+                        triangleNames.push(trackName || `Bass #${index + 1}`);
+                    } else {
+                        // 矩形波1と2に交互に割り振る
+                        if (midiData.classifiedGroups.pulse1.length <= midiData.classifiedGroups.pulse2.length) {
+                            midiData.classifiedGroups.pulse1.push(track);
+                            pulse1Names.push(trackName || `Melody #${index + 1}`);
+                        } else {
+                            midiData.classifiedGroups.pulse2.push(track);
+                            pulse2Names.push(trackName || `Harmony #${index + 1}`);
+                        }
+                    }
+                }
+            });
+
+            // ★追加：いつでもオリジナルデータを安全に加工できるようにディープコピーを保持
+            originalClassifiedGroups = {
+                pulse1: cloneTracks(midiData.classifiedGroups.pulse1),
+                pulse2: cloneTracks(midiData.classifiedGroups.pulse2),
+                triangle: cloneTracks(midiData.classifiedGroups.triangle),
+                noise: cloneTracks(midiData.classifiedGroups.noise)
+            };
+
+            // UI上のテキスト割り当て表示を更新
+            document.getElementById("midiTrack1").innerText = pulse1Names.join(", ") || "None";
+            document.getElementById("midiTrack2").innerText = pulse2Names.join(", ") || "None";
+            document.getElementById("midiTrack3").innerText = triangleNames.join(", ") || "None";
+            document.getElementById("midiTrack4").innerText = noiseNames.join(", ") || "None";
+        }
+
+        // ★追加：BPMのリアルタイム調整とスケジュールの再構築
+        function applyMidiBpm(newBpm) {
+            if (!midiData || !originalClassifiedGroups) return;
+            
+            currentMidiBpm = newBpm;
+            const ratio = baseMidiBpm / newBpm;
+
+            // 現在の再生割合位置（0.0 〜 1.0）を取得
+            const currentProgress = currentMidiDuration > 0 ? (audioCtx.currentTime - midiStartTime) / currentMidiDuration : 0;
+            const wasPlaying = isMidiPlaying;
+
+            // スケジュール変更のため、一度再生を完全停止
+            if (isMidiPlaying) {
+                isMidiPlaying = false;
+                clearMidiSchedules();
+                clearInterval(midiProgressInterval);
+            }
+
+            // オリジナルデータをスケーリングして上書き
+            midiData.classifiedGroups = {
+                pulse1: scaleTracks(originalClassifiedGroups.pulse1, ratio),
+                pulse2: scaleTracks(originalClassifiedGroups.pulse2, ratio),
+                triangle: scaleTracks(originalClassifiedGroups.triangle, ratio),
+                noise: scaleTracks(originalClassifiedGroups.noise, ratio)
+            };
+
+            currentMidiDuration = originalMidiDuration * ratio;
+            document.getElementById("midiDuration").innerText = `${Math.round(currentMidiDuration)}秒`;
+            document.getElementById("midiTotalTime").innerText = formatTime(currentMidiDuration);
+            document.getElementById("midiProgressBar").max = Math.round(currentMidiDuration);
+
+            // テンポに合わせて再生位置を再計算
+            if (wasPlaying) {
+                midiPausedTime = currentMidiDuration * currentProgress;
+                startMidiPlayback();
+            } else {
+                midiPausedTime = currentMidiDuration * currentProgress;
+                document.getElementById("midiProgressBar").value = midiPausedTime;
+                document.getElementById("midiCurrentTime").innerText = formatTime(midiPausedTime);
+            }
+        }
+
+        // トラックの秒数を伸縮（スケーリング）するヘルパー関数
+        function scaleTracks(tracksArray, ratio) {
+            if (!tracksArray) return [];
+            return tracksArray.map(track => {
+                return {
+                    ...track,
+                    notes: track.notes.map(note => ({
+                        ...note,
+                        time: note.time * ratio,
+                        duration: note.duration * ratio
+                    }))
+                };
+            });
+        }
+
+        // MIDIファイルの再生実行
+        function startMidiPlayback() {
+            if (!midiData || isMidiPlaying) return;
+
+            stopPlayback();
+
+            isMidiPlaying = true;
+            document.getElementById("midiPlayBtn").innerText = "MIDI PAUSE";
+            document.getElementById("midiPlayBtn").classList.replace("pixel-btn-blue", "pixel-btn-yellow");
+            
+            midiStartTime = audioCtx.currentTime - midiPausedTime;
+            
+            const groups = midiData.classifiedGroups;
+
+            // グループ分けされた全トラックを並行スケジュールして再生
+            if (groups.pulse1) groups.pulse1.forEach(track => scheduleMidiTrack(track, 'pulse1'));
+            if (groups.pulse2) groups.pulse2.forEach(track => scheduleMidiTrack(track, 'pulse2'));
+            if (groups.triangle) groups.triangle.forEach(track => scheduleMidiTrack(track, 'triangle'));
+            if (groups.noise) groups.noise.forEach(track => scheduleMidiTrack(track, 'noise'));
+
+            // プログレスバーの更新スタート
+            midiProgressInterval = setInterval(updateMidiProgress, 100);
+            updateStatus("🚀 全トラック（アタック点滅トリガー対応）を8bit音源で贅沢に再生中！", "green");
+        }
+
+        // Web Audioのタイムラインに演奏をスケジュールする
+        function scheduleMidiTrack(track, channelKey) {
+            const now = audioCtx.currentTime;
+            
+            track.notes.forEach(note => {
+                if (note.time < midiPausedTime) return;
+
+                const scheduleTime = note.time - midiPausedTime;
+                const duration = note.duration;
+
+                if (channelKey === 'noise') {
+                    // MIDIの標準ドラムノート番号を簡易マッピング
+                    let drumType = 1; // Hi-hat
+                    if (note.midi === 35 || note.midi === 36) drumType = 3; // KICK
+                    else if (note.midi === 38 || note.midi === 40) drumType = 2; // SNARE
+                    else if (note.midi >= 41 && note.midi <= 48) drumType = 0; // TOM
+                    
+                    const timeoutId = setTimeout(() => {
+                        if (isMidiPlaying) {
+                            playNote(channelKey, drumType, duration, channelsData[channelKey].decay);
+                        }
+                    }, scheduleTime * 1000);
+                    midiPlayTimeoutIds.push(timeoutId);
+                } else {
+                    const frequency = midiNoteToFrequency(note.midi);
+                    
+                    const timeoutId = setTimeout(() => {
+                        if (isMidiPlaying) {
+                            playNote(channelKey, frequency, duration, channelsData[channelKey].decay);
+                        }
+                    }, scheduleTime * 1000);
+                    midiPlayTimeoutIds.push(timeoutId);
+                }
+            });
+        }
+
+        // MIDIのノート番号を周波数に変換
+        function midiNoteToFrequency(midiNote) {
+            return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
+        // MIDI再生の一時停止
+        function pauseMidiPlayback() {
+            isMidiPlaying = false;
+            document.getElementById("midiPlayBtn").innerText = "MIDI PLAY";
+            document.getElementById("midiPlayBtn").classList.replace("pixel-btn-yellow", "pixel-btn-blue");
+
+            clearMidiSchedules();
+
+            midiPausedTime = audioCtx.currentTime - midiStartTime;
+            clearInterval(midiProgressInterval);
+            updateStatus("⏸️ MIDI再生を一時停止しました。");
+        }
+
+        // MIDI再生の完全停止
+        function stopMidiPlayback() {
+            isMidiPlaying = false;
+            document.getElementById("midiPlayBtn").innerText = "MIDI PLAY";
+            document.getElementById("midiPlayBtn").classList.replace("pixel-btn-yellow", "pixel-btn-blue");
+
+            clearMidiSchedules();
+            midiPausedTime = 0;
+            clearInterval(midiProgressInterval);
+            
+            document.getElementById("midiProgressBar").value = 0;
+            document.getElementById("midiCurrentTime").innerText = "0:00";
+            updateStatus("⏹️ MIDI再生を停止しました。");
+        }
+
+        function clearMidiSchedules() {
+            midiPlayTimeoutIds.forEach(id => clearTimeout(id));
+            midiPlayTimeoutIds = [];
+        }
+
+        // プログレスバーの定期更新
+        function updateMidiProgress() {
+            if (!isMidiPlaying) return;
+            
+            const current = audioCtx.currentTime - midiStartTime;
+            document.getElementById("midiProgressBar").value = current;
+            document.getElementById("midiCurrentTime").innerText = formatTime(current);
+
+            if (current >= currentMidiDuration) { // ★修正：スケーリングされた長さを適用
+                stopMidiPlayback();
+                updateStatus("🏁 曲の再生が終了しました！", "green");
+            }
+        }
+
+        // 秒数を分：秒のフォーマットに変換
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        // --- 画面描画 & シーケンサーUI処理 ---
+
+        // 各ステップのインジケーター
+        function buildStepIndicators() {
+            const container = document.getElementById("stepIndicatorContainer");
+            container.innerHTML = "";
+            for (let i = 0; i < 16; i++) {
+                const indicator = document.createElement("div");
+                indicator.id = `step-ind-${i}`;
+                indicator.className = "h-3 bg-slate-800 rounded border border-slate-700 transition-all duration-75";
+                container.appendChild(indicator);
+            }
+        }
+
+        // メイングリッドの再描画
+        function drawSequencerGrid() {
+            const gridContainer = document.getElementById("sequencerGrid");
+            gridContainer.innerHTML = "";
+            
+            const currentChan = channelsData[activeChannel];
+            const isNoise = activeChannel === 'noise';
+            const rowsCount = isNoise ? 4 : 12;
+            const labels = isNoise ? drumNames : (activeChannel === 'triangle' ? bassNoteNames : noteNames);
+
+            for (let rowIdx = 0; rowIdx < rowsCount; rowIdx++) {
+                const rowDiv = document.createElement("div");
+                rowDiv.className = "grid grid-cols-17 gap-1 h-8 items-center";
+
+                const label = document.createElement("div");
+                label.className = "w-20 text-[8px] text-right pr-2 text-slate-300 select-none font-bold overflow-hidden whitespace-nowrap";
+                label.innerText = labels[rowIdx];
+                rowDiv.appendChild(label);
+
+                const stepContainer = document.createElement("div");
+                stepContainer.className = "col-span-16 grid grid-cols-16 gap-1 h-full";
+
+                for (let colIdx = 0; colIdx < 16; colIdx++) {
+                    const cell = document.createElement("button");
+                    const isActive = currentChan.grid[rowIdx][colIdx];
+                    
+                    cell.className = "h-full rounded transition-all flex items-center justify-center border-2 border-slate-900 shadow-sm ";
+                    
+                    if (isActive) {
+                        if (activeChannel === 'pulse1') cell.classList.add("bg-[#ff4757]", "border-[#ff2e44]");
+                        else if (activeChannel === 'pulse2') cell.classList.add("bg-[#eccc68]", "border-[#ffa502]");
+                        else if (activeChannel === 'triangle') cell.classList.add("bg-[#1e90ff]", "border-[#3742fa]");
+                        else if (activeChannel === 'noise') cell.classList.add("bg-[#2ed573]", "border-[#26af5f]");
+                    } else {
+                        const isBarStart = colIdx % 4 === 0;
+                        cell.classList.add(isBarStart ? "bg-slate-800" : "bg-slate-700", "hover:bg-slate-600");
+                    }
+
+                    cell.addEventListener("mousedown", () => {
+                        initAudio();
+                        currentChan.grid[rowIdx][colIdx] = !currentChan.grid[rowIdx][colIdx];
+                        
+                        if (currentChan.grid[rowIdx][colIdx]) {
+                            if (isNoise) {
+                                playNote(activeChannel, rowIdx, 0.1, currentChan.decay);
+                            } else {
+                                const freq = activeChannel === 'triangle' ? bassFrequencies[labels[rowIdx]] : noteFrequencies[labels[rowIdx]];
+                                playNote(activeChannel, freq, 0.1, currentChan.decay);
+                            }
+                        }
+                        
+                        drawSequencerGrid();
+                    });
+
+                    stepContainer.appendChild(cell);
+                }
+                rowDiv.appendChild(stepContainer);
+                gridContainer.appendChild(rowDiv);
+            }
+        }
+
+        // リアルタイム演奏用の鍵盤配置
+        function buildKeyboard() {
+            const container = document.getElementById("pianoKeyboard");
+            container.innerHTML = "";
+
+            const keys = [
+                { note: 'C4', label: 'C4', isBlack: false, freq: 261.63 },
+                { note: 'C#4', label: 'C#', isBlack: true, freq: 277.18 },
+                { note: 'D4', label: 'D4', isBlack: false, freq: 293.66 },
+                { note: 'D#4', label: 'D#', isBlack: true, freq: 311.13 },
+                { note: 'E4', label: 'E4', isBlack: false, freq: 329.63 },
+                { note: 'F4', label: 'F4', isBlack: false, freq: 349.23 },
+                { note: 'F#4', label: 'F#', isBlack: true, freq: 369.99 },
+                { note: 'G4', label: 'G4', isBlack: false, freq: 392.00 },
+                { note: 'G#4', label: 'G#', isBlack: true, freq: 415.30 },
+                { note: 'A4', label: 'A4', isBlack: false, freq: 440.00 },
+                { note: 'A#4', label: 'A#', isBlack: true, freq: 466.16 },
+                { note: 'B4', label: 'B4', isBlack: false, freq: 493.88 },
+                { note: 'C5', label: 'C5', isBlack: false, freq: 523.25 }
+            ];
+
+            keys.forEach(k => {
+                const btn = document.createElement("button");
+                btn.className = k.isBlack 
+                    ? "w-8 h-20 bg-black text-[7px] text-white rounded-b border-2 border-slate-700 flex flex-col justify-end pb-2 active:bg-slate-800 focus:outline-none flex-shrink-0"
+                    : "w-10 h-24 bg-white text-[7px] text-slate-800 rounded-b border-2 border-slate-300 flex flex-col justify-end pb-2 active:bg-slate-200 focus:outline-none flex-shrink-0";
+                
+                btn.innerHTML = `<span class="block text-center font-bold">${k.label}</span>`;
+                
+                btn.addEventListener("mousedown", () => {
+                    initAudio();
+                    if (activeChannel === 'noise') {
+                        playNote('noise', Math.floor(Math.random() * 4), 0.1, 0.15);
+                    } else {
+                        const currentChan = channelsData[activeChannel];
+                        playNote(activeChannel, k.freq, 0.1, currentChan.decay);
+                    }
+                });
+                
+                container.appendChild(btn);
+            });
+        }
+
+        // --- タイマー・ループ (演奏のコア) ---
+        function runSequencer() {
+            const stepDuration = (60 / bpm) / 4;
+            const now = audioCtx.currentTime;
+
+            Object.keys(channelsData).forEach(chanKey => {
+                const chan = channelsData[chanKey];
+                const isNoise = chanKey === 'noise';
+                const rowsCount = isNoise ? 4 : 12;
+                const labels = isNoise ? drumNames : (chanKey === 'triangle' ? bassNoteNames : noteNames);
+
+                for (let row = 0; row < rowsCount; row++) {
+                    if (chan.grid[row][currentStep]) {
+                        if (isNoise) {
+                            playNote(chanKey, row, stepDuration, chan.decay);
+                        } else {
+                            const freq = chanKey === 'triangle' ? bassFrequencies[labels[row]] : noteFrequencies[labels[row]];
+                            playNote(chanKey, freq, stepDuration, chan.decay);
+                        }
+                    }
+                }
+            });
+
+            updateStepIndicator(currentStep);
+            currentStep = (currentStep + 1) % 16;
+        }
+
+        function updateStepIndicator(step) {
+            for (let i = 0; i < 16; i++) {
+                const el = document.getElementById(`step-ind-${i}`);
+                if (!el) continue;
+                if (i === step) {
+                    el.classList.add("bg-yellow-400", "scale-y-125");
+                    el.classList.remove("bg-slate-800");
+                } else {
+                    el.classList.remove("bg-yellow-400", "scale-y-125");
+                    el.classList.add("bg-slate-800");
+                }
+            }
+        }
+
+        // 再生開始
+        function startPlayback() {
+            if (isPlaying) return;
+            initAudio();
+            
+            if (isMidiPlaying) {
+                stopMidiPlayback();
+            }
+
+            isPlaying = true;
+            document.getElementById("playBtn").classList.add("ring-4", "ring-emerald-300");
+            
+            const intervalTime = (60 / bpm) / 4 * 1000; 
+            runSequencer();
+            timerId = setInterval(runSequencer, intervalTime);
+        }
+
+        // 再生停止
+        function stopPlayback() {
+            if (!isPlaying) return;
+            isPlaying = false;
+            clearInterval(timerId);
+            timerId = null;
+            document.getElementById("playBtn").classList.remove("ring-4", "ring-emerald-300");
+            
+            for (let i = 0; i < 16; i++) {
+                const el = document.getElementById(`step-ind-${i}`);
+                if (el) {
+                    el.classList.remove("bg-yellow-400", "scale-y-125");
+                    el.classList.add("bg-slate-800");
+                }
+            }
+            currentStep = 0;
+        }
+
+        // --- プリセットロード ---
+        function loadPreset(presetKey) {
+            const preset = presetSongs[presetKey];
+            if (!preset) return;
+
+            bpm = preset.bpm;
+            document.getElementById("bpmSlider").value = bpm;
+            document.getElementById("bpmVal").innerText = bpm;
+
+            clearGrid();
+
+            preset.pulse1.forEach(([row, col]) => channelsData.pulse1.grid[row][col] = true);
+            preset.pulse2.forEach(([row, col]) => channelsData.pulse2.grid[row][col] = true);
+            preset.triangle.forEach(([row, col]) => channelsData.triangle.grid[row][col] = true);
+            preset.noise.forEach(([row, col]) => channelsData.noise.grid[row][col] = true);
+
+            drawSequencerGrid();
+            updateStatus(`📻 プリセット「${presetKey === 'hero' ? 'HERO\'S THEME' : 'DUNGEON'}」を読み込みました！`, "green");
+
+            if (isPlaying) {
+                stopPlayback();
+                startPlayback();
+            }
+        }
+
+        function clearGrid() {
+            Object.keys(channelsData).forEach(chanKey => {
+                const chan = channelsData[chanKey];
+                chan.grid.forEach(row => row.fill(false));
+            });
+            drawSequencerGrid();
+        }
+
+        // --- イベントリスナー設定 ---
+        document.getElementById("startButton").addEventListener("click", initAudio);
+        document.getElementById("playBtn").addEventListener("click", startPlayback);
+        document.getElementById("stopBtn").addEventListener("click", stopPlayback);
+        document.getElementById("clearBtn").addEventListener("click", () => {
+            clearGrid();
+            updateStatus("🗑️ グリッドをクリアしました。");
+        });
+
+        const bpmSlider = document.getElementById("bpmSlider");
+        bpmSlider.addEventListener("input", (e) => {
+            bpm = parseInt(e.target.value);
+            document.getElementById("bpmVal").innerText = bpm;
+            if (isPlaying) {
+                clearInterval(timerId);
+                const intervalTime = (60 / bpm) / 4 * 1000;
+                timerId = setInterval(runSequencer, intervalTime);
+            }
+        });
+
+        const tabButtons = document.querySelectorAll(".tab-btn");
+        tabButtons.forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const targetChan = e.target.getAttribute("data-channel");
+                activeChannel = targetChan;
+
+                tabButtons.forEach(b => {
+                    b.classList.remove("bg-[#ff4757]", "text-white", "border-black");
+                    b.classList.add("bg-slate-300", "text-slate-600", "border-slate-400");
+                });
+                e.target.classList.remove("bg-slate-300", "text-slate-600", "border-slate-400");
+                e.target.classList.add("bg-[#ff4757]", "text-white", "border-black");
+
+                const dutyControl = document.getElementById("dutyControl");
+                const noiseInfo = document.getElementById("noiseInfo");
+                const volSlider = document.getElementById("volSlider");
+                const decaySlider = document.getElementById("decaySlider");
+
+                if (activeChannel === 'pulse1' || activeChannel === 'pulse2') {
+                    dutyControl.classList.remove("hidden");
+                    noiseInfo.classList.add("hidden");
+                    document.getElementById("dutySelect").value = channelsData[activeChannel].duty;
+                } else if (activeChannel === 'noise') {
+                    dutyControl.classList.add("hidden");
+                    noiseInfo.classList.remove("hidden");
+                } else {
+                    dutyControl.classList.add("hidden");
+                    noiseInfo.classList.add("hidden");
+                }
+
+                volSlider.value = channelsData[activeChannel].volume * 100;
+                decaySlider.value = channelsData[activeChannel].decay * 100;
+
+                drawSequencerGrid();
+            });
+        });
+
+        document.getElementById("dutySelect").addEventListener("change", (e) => {
+            if (activeChannel === 'pulse1' || activeChannel === 'pulse2') {
+                channelsData[activeChannel].duty = parseFloat(e.target.value);
+            }
+        });
+
+        document.getElementById("volSlider").addEventListener("input", (e) => {
+            channelsData[activeChannel].volume = parseFloat(e.target.value) / 100;
+        });
+
+        document.getElementById("decaySlider").addEventListener("input", (e) => {
+            channelsData[activeChannel].decay = parseFloat(e.target.value) / 100;
+        });
+
+        document.getElementById("preset1").addEventListener("click", () => loadPreset('hero'));
+        document.getElementById("preset2").addEventListener("click", () => loadPreset('dungeon'));
+
+        // MIDIファイルインプット & 操作関連
+        const midiInput = document.getElementById("midiInput");
+        midiInput.addEventListener("change", (e) => {
+            if (e.target.files.length > 0) {
+                handleMidiFile(e.target.files[0]);
+            }
+        });
+
+        const dropZone = document.getElementById("dropZone");
+        dropZone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropZone.classList.add("bg-slate-700", "border-[#ffa502]");
+        });
+
+        dropZone.addEventListener("dragleave", () => {
+            dropZone.classList.remove("bg-slate-700", "border-[#ffa502]");
+        });
+
+        dropZone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropZone.classList.remove("bg-slate-700", "border-[#ffa502]");
+            if (e.dataTransfer.files.length > 0) {
+                handleMidiFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        document.getElementById("midiPlayBtn").addEventListener("click", () => {
+            if (isMidiPlaying) {
+                pauseMidiPlayback();
+            } else {
+                startMidiPlayback();
+            }
+        });
+
+        document.getElementById("midiStopBtn").addEventListener("click", stopMidiPlayback);
+
+        // ★追加：BPM変更時の入力イベントをバインド
+        document.getElementById("midiBpmInput").addEventListener("change", (e) => {
+            let val = parseInt(e.target.value, 10);
+            if (isNaN(val) || val < 30) val = 30;
+            if (val > 300) val = 300;
+            e.target.value = val;
+            applyMidiBpm(val);
+        });
+
+        const progressBar = document.getElementById("midiProgressBar");
+        progressBar.addEventListener("input", (e) => {
+            if (!midiData) return;
+            const wasPlaying = isMidiPlaying;
+            if (isMidiPlaying) {
+                pauseMidiPlayback();
+            }
+            midiPausedTime = parseFloat(e.target.value);
+            document.getElementById("midiCurrentTime").innerText = formatTime(midiPausedTime);
+            
+            if (wasPlaying) {
+                startMidiPlayback();
+            }
+        });
+
+        // --- 初期設定実行 ---
+        window.onload = function() {
+            buildStepIndicators();
+            drawSequencerGrid();
+            buildKeyboard();
+            updateStatus("⚠️ 音を出すには [AUDIO ON] または [PLAY] を押してください。");
+        };
+    </script>
+</body>
+</html>
